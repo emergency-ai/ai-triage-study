@@ -132,7 +132,8 @@ export function usePushToTalk({
       streamRef.current = stream;
       setPermission("granted");
 
-      const ctx = new AudioContext();
+      // AWS Transcribe Streaming recommends 16 kHz PCM input.
+      const ctx = new AudioContext({ sampleRate: 16_000 });
       audioCtxRef.current = ctx;
       const src = ctx.createMediaStreamSource(stream);
 

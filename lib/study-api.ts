@@ -1,4 +1,4 @@
-import { appendAudioToFormData, type UploadableAudio } from "@sara/ambient-agent-client";
+import type { UploadableAudio } from "@sara/ambient-agent-client";
 import { getApiKey, getClientApiBase } from "@/lib/api-config";
 
 export interface StudyConversation {
@@ -72,23 +72,20 @@ export async function postUtterance(args: {
   audio?: UploadableAudio;
   text?: string;
 }): Promise<TriageResponse> {
-  const form = new FormData();
+  const payload: Record<string, string> = {};
   if (args.audio && args.audio instanceof Blob) {
-    // Base64 text fields avoid API Gateway corrupting multipart binary uploads.
-    form.set("audio_base64", await blobToBase64(args.audio));
-    form.set("audio_mime", args.audio.type || "audio/wav");
-  } else if (args.audio) {
-    appendAudioToFormData(form, args.audio);
+    payload.audio_base64 = await blobToBase64(args.audio);
+    payload.audio_mime = args.audio.type || "audio/wav";
   } else if (args.text) {
-    form.set("text", args.text);
+    payload.text = args.text;
   }
 
   const r = await fetch(
     `${apiBase()}/ai-triage-study/conversations/${encodeURIComponent(args.conversationId)}/utterances`,
     {
       method: "POST",
-      headers: apiHeaders(),
-      body: form,
+      headers: { ...apiHeaders(), "content-type": "application/json" },
+      body: JSON.stringify(payload),
     },
   );
   if (!r.ok) {

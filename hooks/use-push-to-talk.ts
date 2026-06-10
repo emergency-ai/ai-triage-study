@@ -22,14 +22,12 @@ export interface UsePushToTalk {
   requestPermission: () => Promise<void>;
 }
 
-const TIMESLICE_MS = 200;
-const MIN_RECORD_MS = 600;
-const FLUSH_BEFORE_STOP_MS = 200;
-const MIN_BLOB_BYTES = 800;
+const MIN_RECORD_MS = 400;
+const MIN_BLOB_BYTES = 1000;
 
 /**
- * Hold-spacebar-to-talk. Filters key repeats, ignores presses while a text
- * input is focused, and aborts cleanly if the tab becomes hidden mid-record.
+ * Hold-spacebar-to-talk. Captures mono PCM via Web Audio API and uploads WAV
+ * (not WebM) so ffmpeg on the server always gets a valid container.
  */
 export function usePushToTalk({
   onRecorded,
@@ -42,11 +40,12 @@ export function usePushToTalk({
   const [level, setLevel] = useState(0);
 
   const streamRef = useRef<MediaStream | null>(null);
-  const recorderRef = useRef<MediaRecorder | null>(null);
-  const chunksRef = useRef<Blob[]>([]);
-  const mimeTypeRef = useRef("audio/webm");
   const audioCtxRef = useRef<AudioContext | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
+  const processorRef = useRef<ScriptProcessorNode | null>(null);
+  const sampleChunksRef = useRef<Float32Array[]>([]);
+  const sampleCountRef = useRef(0);
+  const capturingRef = useRef(false);
   const rafRef = useRef<number | null>(null);
   const startingRef = useRef(false);
   const pendingStopRef = useRef(false);
@@ -59,7 +58,12 @@ export function usePushToTalk({
       cancelAnimationFrame(rafRef.current);
       rafRef.current = null;
     }
+    capturingRef.current = false;
+    processorRef.current?.disconnect();
+    processorRef.current = null;
     analyserRef.current = null;
+    sampleChunksRef.current = [];
+    sampleCountRef.current = 0;
     if (audioCtxRef.current) {
       audioCtxRef.current.close().catch(() => undefined);
       audioCtxRef.current = null;
@@ -68,7 +72,6 @@ export function usePushToTalk({
       for (const t of streamRef.current.getTracks()) t.stop();
       streamRef.current = null;
     }
-    recorderRef.current = null;
   }, []);
 
   const requestPermission = useCallback(async () => {
@@ -83,27 +86,41 @@ export function usePushToTalk({
     }
   }, []);
 
-  const finalizeRecorder = useCallback(async (rec: MediaRecorder) => {
-    if (rec.state === "inactive") return;
-    try {
-      if (rec.state === "recording" && typeof rec.requestData === "function") {
-        rec.requestData();
-        await new Promise((r) => setTimeout(r, FLUSH_BEFORE_STOP_MS));
-      }
-      if (rec.state === "recording") rec.stop();
-    } catch {
-      // ignore
+  const finishCapture = useCallback(async () => {
+    capturingRef.current = false;
+    const ctx = audioCtxRef.current;
+    const sampleRate = ctx?.sampleRate ?? 48_000;
+    const total = sampleCountRef.current;
+    const merged = new Float32Array(total);
+    let pos = 0;
+    for (const chunk of sampleChunksRef.current) {
+      merged.set(chunk, pos);
+      pos += chunk.length;
     }
-  }, []);
+    sampleChunksRef.current = [];
+    sampleCountRef.current = 0;
+    releaseStream();
+    setIsRecording(false);
+    setLevel(0);
+    startingRef.current = false;
 
-  const scheduleFinalize = useCallback(
-    (rec: MediaRecorder) => {
-      const elapsed = Date.now() - recordStartedAtRef.current;
-      const wait = Math.max(0, MIN_RECORD_MS - elapsed);
-      window.setTimeout(() => void finalizeRecorder(rec), wait);
-    },
-    [finalizeRecorder],
-  );
+    const blob = encodeWav(merged, sampleRate);
+    if (blob.size >= MIN_BLOB_BYTES) {
+      try {
+        await onRecordedRef.current(blob);
+      } catch (e) {
+        setError(e instanceof Error ? e.message : String(e));
+      }
+    } else {
+      setError("Recording too short — hold space a little longer.");
+    }
+  }, [releaseStream]);
+
+  const scheduleFinish = useCallback(() => {
+    const elapsed = Date.now() - recordStartedAtRef.current;
+    const wait = Math.max(0, MIN_RECORD_MS - elapsed);
+    window.setTimeout(() => void finishCapture(), wait);
+  }, [finishCapture]);
 
   const startRecording = useCallback(async () => {
     if (isRecording || disabled || startingRef.current) return;
@@ -116,12 +133,32 @@ export function usePushToTalk({
       setPermission("granted");
 
       const ctx = new AudioContext();
+      audioCtxRef.current = ctx;
       const src = ctx.createMediaStreamSource(stream);
+
       const analyser = ctx.createAnalyser();
       analyser.fftSize = 1024;
       src.connect(analyser);
-      audioCtxRef.current = ctx;
       analyserRef.current = analyser;
+
+      const processor = ctx.createScriptProcessor(4096, 1, 1);
+      processorRef.current = processor;
+      sampleChunksRef.current = [];
+      sampleCountRef.current = 0;
+      capturingRef.current = true;
+
+      processor.onaudioprocess = (ev) => {
+        if (!capturingRef.current) return;
+        const input = ev.inputBuffer.getChannelData(0);
+        sampleChunksRef.current.push(new Float32Array(input));
+        sampleCountRef.current += input.length;
+      };
+
+      const silent = ctx.createGain();
+      silent.gain.value = 0;
+      src.connect(processor);
+      processor.connect(silent);
+      silent.connect(ctx.destination);
 
       const buf = new Uint8Array(analyser.frequencyBinCount);
       const tick = () => {
@@ -138,37 +175,10 @@ export function usePushToTalk({
       };
       rafRef.current = requestAnimationFrame(tick);
 
-      const mime = pickMime();
-      const rec = mime ? new MediaRecorder(stream, { mimeType: mime }) : new MediaRecorder(stream);
-      mimeTypeRef.current = rec.mimeType || mime || "audio/webm";
-      recorderRef.current = rec;
-      chunksRef.current = [];
-      rec.addEventListener("dataavailable", (e) => {
-        if (e.data && e.data.size > 0) chunksRef.current.push(e.data);
-      });
-      rec.addEventListener("stop", async () => {
-        pendingStopRef.current = false;
-        const blob = new Blob(chunksRef.current, { type: mimeTypeRef.current });
-        chunksRef.current = [];
-        releaseStream();
-        setIsRecording(false);
-        setLevel(0);
-        startingRef.current = false;
-        if (blob.size >= MIN_BLOB_BYTES) {
-          try {
-            await onRecordedRef.current(blob);
-          } catch (e) {
-            setError(e instanceof Error ? e.message : String(e));
-          }
-        } else {
-          setError("Recording too short — hold space at least one second.");
-        }
-      });
-      rec.start(TIMESLICE_MS);
       recordStartedAtRef.current = Date.now();
       setIsRecording(true);
       startingRef.current = false;
-      if (pendingStopRef.current) scheduleFinalize(rec);
+      if (pendingStopRef.current) scheduleFinish();
     } catch (e) {
       startingRef.current = false;
       pendingStopRef.current = false;
@@ -177,16 +187,15 @@ export function usePushToTalk({
       releaseStream();
       setIsRecording(false);
     }
-  }, [disabled, isRecording, releaseStream, scheduleFinalize]);
+  }, [disabled, finishCapture, isRecording, releaseStream, scheduleFinish]);
 
   const stopRecording = useCallback(() => {
-    const rec = recorderRef.current;
-    if (startingRef.current && !rec) {
+    if (startingRef.current && !audioCtxRef.current) {
       pendingStopRef.current = true;
       return;
     }
-    if (rec && rec.state !== "inactive") {
-      scheduleFinalize(rec);
+    if (capturingRef.current || audioCtxRef.current) {
+      scheduleFinish();
       return;
     }
     startingRef.current = false;
@@ -194,7 +203,7 @@ export function usePushToTalk({
     releaseStream();
     setIsRecording(false);
     setLevel(0);
-  }, [releaseStream, scheduleFinalize]);
+  }, [releaseStream, scheduleFinish]);
 
   useEffect(() => {
     const isTypingTarget = (el: EventTarget | null): boolean => {
@@ -258,17 +267,37 @@ export function usePushToTalk({
   return { isRecording, permission, error, level, requestPermission };
 }
 
-function pickMime(): string | undefined {
-  const candidates = [
-    "audio/webm;codecs=opus",
-    "audio/webm",
-    "audio/mp4;codecs=mp4a.40.2",
-    "audio/mp4",
-    "audio/ogg;codecs=opus",
-  ];
-  if (typeof MediaRecorder === "undefined") return undefined;
-  for (const m of candidates) {
-    if (MediaRecorder.isTypeSupported(m)) return m;
+function encodeWav(samples: Float32Array, sampleRate: number): Blob {
+  const numChannels = 1;
+  const bitsPerSample = 16;
+  const dataSize = samples.length * 2;
+  const buffer = new ArrayBuffer(44 + dataSize);
+  const view = new DataView(buffer);
+
+  const writeStr = (offset: number, s: string) => {
+    for (let i = 0; i < s.length; i++) view.setUint8(offset + i, s.charCodeAt(i));
+  };
+
+  writeStr(0, "RIFF");
+  view.setUint32(4, 36 + dataSize, true);
+  writeStr(8, "WAVE");
+  writeStr(12, "fmt ");
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);
+  view.setUint16(22, numChannels, true);
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, sampleRate * numChannels * (bitsPerSample / 8), true);
+  view.setUint16(32, numChannels * (bitsPerSample / 8), true);
+  view.setUint16(34, bitsPerSample, true);
+  writeStr(36, "data");
+  view.setUint32(40, dataSize, true);
+
+  let offset = 44;
+  for (let i = 0; i < samples.length; i++) {
+    const s = Math.max(-1, Math.min(1, samples[i]));
+    view.setInt16(offset, s < 0 ? s * 0x8000 : s * 0x7fff, true);
+    offset += 2;
   }
-  return undefined;
+
+  return new Blob([buffer], { type: "audio/wav" });
 }

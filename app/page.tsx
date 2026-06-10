@@ -69,7 +69,7 @@ export default function Page() {
               <SaraLogo size={24} />
               <Heading size="sm">AI Triage Study</Heading>
               <Text fontSize="xs" opacity={0.55}>
-                patient profile validation
+                to validate patient profile generation using SARA AI
               </Text>
             </HStack>
             <Text fontSize="xs" opacity={0.55} fontFamily="mono">

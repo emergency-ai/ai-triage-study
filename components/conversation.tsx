@@ -62,7 +62,7 @@ function Turn({ turn }: { turn: ChatTurn }) {
       {!isUser && <SaraLogo size={28} />}
       <Box maxW="85%">
         <Text fontSize="xs" opacity={0.55} mb="1" textAlign={isUser ? "right" : "left"}>
-          {isUser ? "You" : "Patient profile"}
+          {isUser ? "You" : "SARA Generated Patient Profile"}
           {showJsonBadge ? " · JSON" : null}
         </Text>
         {(turn.text || isPending) && (

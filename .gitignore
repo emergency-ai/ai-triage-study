@@ -1,0 +1,43 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Next.js
+.next/
+out/
+
+# Environment & secrets (keep .env.example as the template)
+.env
+.env.*
+!.env.example
+
+# Build / typecheck artifacts
+*.tsbuildinfo
+next-env.d.ts
+
+# Package manager lockfiles from other tools
+package-lock.json
+yarn.lock
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editors
+.vscode/*
+!.vscode/extensions.json
+.idea/
+*.swp
+*.swo
+*~
+
+# Deploy / tooling
+.vercel/

@@ -8,32 +8,22 @@ import {
   IconButton,
   Menu,
   Portal,
-  Spinner,
   Text,
   VStack,
 } from "@chakra-ui/react";
-import { Download, LogOut, Menu as MenuIcon, Plus } from "lucide-react";
+import { Download, Menu as MenuIcon, Plus } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { MarqueeText } from "@/components/marquee-text";
 import { NewConversationDialog } from "@/components/new-conversation-dialog";
-import { useAuth } from "@/contexts/auth-context";
-import {
-  exportConversationUrl,
-  listConversations,
-  createConversation,
-  type StudyConversation,
-} from "@/lib/study-api";
+import { listCachedConversations, saveCachedConversation } from "@/lib/conversation-cache";
+import { createConversation, exportConversation, type StudyConversation } from "@/lib/study-api";
 
 export interface ConversationDrawerProps {
-  apiBase: string;
-  apiKey: string;
-  userId: string;
   selectedConversationId: string | null;
   onSelectConversation: (conversationId: string) => void;
 }
 
 const ITEM_BG = "rgba(255, 255, 255, 0.08)";
-const ITEM_BG_ACTIVE = "rgba(255, 255, 255, 0.12)";
 
 function ConversationItem({
   conversation,
@@ -85,48 +75,32 @@ function ConversationItem({
 }
 
 export function ConversationDrawer({
-  apiBase,
-  apiKey,
-  userId,
   selectedConversationId,
   onSelectConversation,
 }: ConversationDrawerProps) {
-  const { logout } = useAuth();
   const [open, setOpen] = useState(false);
   const [newOpen, setNewOpen] = useState(false);
   const [conversations, setConversations] = useState<StudyConversation[]>([]);
-  const [loading, setLoading] = useState(false);
 
-  const auth = { apiKey, userId };
-
-  const loadConversations = useCallback(async () => {
-    if (!userId) return;
-    setLoading(true);
-    try {
-      const items = await listConversations(apiBase, auth);
-      setConversations(items);
-    } finally {
-      setLoading(false);
-    }
-  }, [apiBase, apiKey, userId]);
+  const loadConversations = useCallback(() => {
+    setConversations(listCachedConversations());
+  }, []);
 
   useEffect(() => {
     if (open) loadConversations();
   }, [open, loadConversations]);
 
   const handleCreate = async (testId: string) => {
-    const conv = await createConversation(apiBase, auth, testId);
-    await loadConversations();
+    const conv = await createConversation(testId);
+    saveCachedConversation(conv);
+    loadConversations();
     onSelectConversation(conv.conversation_id);
     setOpen(false);
   };
 
   const downloadExport = async (format: "json" | "csv" | "txt") => {
     if (!selectedConversationId) return;
-    const url = exportConversationUrl(apiBase, selectedConversationId, format);
-    const r = await fetch(url, { headers: { "x-api-key": apiKey, "x-user-id": userId } });
-    if (!r.ok) return;
-    const blob = await r.blob();
+    const blob = await exportConversation(selectedConversationId, format);
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
     a.download = `${selectedConversationId}.${format}`;
@@ -163,9 +137,7 @@ export function ConversationDrawer({
               <Drawer.CloseTrigger />
             </Drawer.Header>
             <Drawer.Body flex="1" overflowY="auto" py="4" px="4" minH="0">
-              {loading ? (
-                <Spinner size="sm" />
-              ) : conversations.length === 0 ? (
+              {conversations.length === 0 ? (
                 <Text fontSize="sm" opacity={0.7}>
                   No test conversations yet. Start one with your Test ID.
                 </Text>
@@ -219,19 +191,6 @@ export function ConversationDrawer({
                   </Portal>
                 </Menu.Root>
               ) : null}
-              <Button
-                mt="1"
-                size="sm"
-                variant="ghost"
-                width="100%"
-                colorPalette="red"
-                onClick={() => {
-                  logout();
-                  setOpen(false);
-                }}
-              >
-                <LogOut size={14} /> Sign out
-              </Button>
             </Box>
           </Drawer.Content>
         </Drawer.Positioner>

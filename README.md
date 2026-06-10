@@ -4,7 +4,7 @@ Standalone validation app for SARA patient profile generation accuracy.
 
 ## Flow
 
-1. Sign in with a MasTER account.
+1. Open the app — no login required.
 2. Start a new test conversation and enter your **Test ID** (letters, digits, `-`, `_` only).
 3. Describe a patient via **voice** (hold spacebar) or **text** input.
 4. Backend runs production `get_ai_patient_profile` directly (no agent loop).
@@ -30,7 +30,6 @@ The production `ambient-agent` Lambda is **not** modified for this study.
 cd aws/src/ai_triage_study
 export GROQ_API_KEY=gsk_...
 export AWS_REGION=ca-central-1
-export USERS_TABLE=users
 export AI_TRIAGE_STUDY_CONVERSATIONS_TABLE=ai-triage-study-conversations
 export AI_TRIAGE_STUDY_TURNS_TABLE=ai-triage-study-turns
 pip install -r requirements.txt
@@ -56,7 +55,7 @@ sam build
 sam deploy --resolve-image-repos
 ```
 
-Set `GROQ_API_KEY` and `API_GATEWAY_KEY` on the **`ai-triage-study`** Lambda (not `ambient-agent`).
+Set `GROQ_API_KEY` on the **`ai-triage-study`** Lambda (not `ambient-agent`).
 
 ## Database tables
 

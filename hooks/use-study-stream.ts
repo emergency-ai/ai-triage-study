@@ -2,9 +2,8 @@
 
 import type { ChatTurn } from "@sara/ambient-agent-client";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { postUtterance } from "@/lib/study-api";
-import { useApiAuth } from "@/lib/use-api-auth";
-import { useAuth } from "@/contexts/auth-context";
+import { updateCachedConversation } from "@/lib/conversation-cache";
+import { getConversation, postUtterance } from "@/lib/study-api";
 import type { UploadableAudio } from "@sara/ambient-agent-client";
 
 export interface UseStudyStream {
@@ -15,18 +14,41 @@ export interface UseStudyStream {
   sendText: (text: string) => Promise<void>;
 }
 
+function turnsFromHistory(
+  turns: Array<{ turn_id: string; role: string; text: string }>,
+): ChatTurn[] {
+  return turns.map((t) => ({
+    id: t.turn_id,
+    role: t.role === "user" ? "user" : "agent",
+    text: t.text,
+  }));
+}
+
 export function useStudyStream(conversationId: string | null): UseStudyStream {
-  const { apiBase } = useAuth();
-  const auth = useApiAuth();
   const [turns, setTurns] = useState<ChatTurn[]>([]);
   const [busy, setBusy] = useState(false);
   const [lastError, setLastError] = useState<string | null>(null);
   const turnIdRef = useRef(0);
 
   useEffect(() => {
-    setTurns([]);
     setLastError(null);
     turnIdRef.current = 0;
+    if (!conversationId) {
+      setTurns([]);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const conv = await getConversation(conversationId);
+        if (!cancelled) setTurns(turnsFromHistory(conv.turns));
+      } catch {
+        if (!cancelled) setTurns([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, [conversationId]);
 
   const runUtterance = useCallback(
@@ -45,8 +67,6 @@ export function useStudyStream(conversationId: string | null): UseStudyStream {
 
       try {
         const result = await postUtterance({
-          apiBase,
-          auth,
           conversationId,
           ...payload,
         });
@@ -58,6 +78,9 @@ export function useStudyStream(conversationId: string | null): UseStudyStream {
             return t;
           }),
         );
+
+        const conv = await getConversation(conversationId);
+        updateCachedConversation(conv);
       } catch (e) {
         setLastError(e instanceof Error ? e.message : String(e));
         setTurns((prev) => prev.filter((t) => t.id !== agentTurnId));
@@ -65,7 +88,7 @@ export function useStudyStream(conversationId: string | null): UseStudyStream {
         setBusy(false);
       }
     },
-    [apiBase, auth, conversationId],
+    [conversationId],
   );
 
   const sendAudio = useCallback(

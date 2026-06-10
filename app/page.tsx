@@ -9,15 +9,12 @@ import { NewConversationDialog } from "@/components/new-conversation-dialog";
 import { PushToTalkBar } from "@/components/push-to-talk-bar";
 import { SaraLogo } from "@/components/sara-logo";
 import { TextInputBar } from "@/components/text-input-bar";
-import { useAuth } from "@/contexts/auth-context";
 import { useStudyStream } from "@/hooks/use-study-stream";
 import { usePushToTalk } from "@/hooks/use-push-to-talk";
+import { saveCachedConversation } from "@/lib/conversation-cache";
 import { createConversation } from "@/lib/study-api";
-import { useApiAuth } from "@/lib/use-api-auth";
 
 export default function Page() {
-  const { userId, apiKey, apiBase } = useAuth();
-  const auth = useApiAuth();
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [newOpen, setNewOpen] = useState(false);
   const stream = useStudyStream(conversationId);
@@ -43,7 +40,8 @@ export default function Page() {
   });
 
   const handleCreateConversation = async (testId: string) => {
-    const conv = await createConversation(apiBase, auth, testId);
+    const conv = await createConversation(testId);
+    saveCachedConversation(conv);
     setConversationId(conv.conversation_id);
   };
 
@@ -64,15 +62,10 @@ export default function Page() {
         <GridItem area="header" px="5" py="3" borderBottomWidth="1px" borderColor="gray.800">
           <HStack justify="space-between" wrap="wrap" gap="3">
             <HStack gap="2.5">
-              {userId ? (
-                <ConversationDrawer
-                  apiBase={apiBase}
-                  apiKey={apiKey}
-                  userId={userId}
-                  selectedConversationId={conversationId}
-                  onSelectConversation={setConversationId}
-                />
-              ) : null}
+              <ConversationDrawer
+                selectedConversationId={conversationId}
+                onSelectConversation={setConversationId}
+              />
               <SaraLogo size={24} />
               <Heading size="sm">AI Triage Study</Heading>
               <Text fontSize="xs" opacity={0.55}>
@@ -89,7 +82,7 @@ export default function Page() {
           <Box h="100%" overflowY="auto" maxW="3xl" mx="auto" w="100%">
             {!conversationId ? (
               <Stack p="8" opacity={0.75} align="center" textAlign="center" mt="16" gap="4">
-                <Text>Select a test conversation or start a new one with your Test ID.</Text>
+                <Text>Start a new test conversation with your Test ID.</Text>
                 <Box
                   as="button"
                   px="4"

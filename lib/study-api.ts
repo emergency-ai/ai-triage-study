@@ -1,17 +1,21 @@
 import { appendAudioToFormData, type UploadableAudio } from "@sara/ambient-agent-client";
-
-export interface AuthHeaders {
-  apiKey: string;
-  userId: string;
-}
+import { getApiKey, getClientApiBase } from "@/lib/api-config";
 
 export interface StudyConversation {
   conversation_id: string;
   test_id: string;
-  user_id: string;
   created_at: number;
   updated_at: number;
   turn_count: number;
+}
+
+export interface StudyTurn {
+  turn_id: string;
+  role: string;
+  text: string;
+  input_mode: string;
+  created_at: number;
+  profile_json?: Record<string, unknown> | null;
 }
 
 export interface TriageResponse {
@@ -20,33 +24,21 @@ export interface TriageResponse {
   profile_text: string;
 }
 
-function headers(auth: AuthHeaders): Record<string, string> {
-  return {
-    "x-api-key": auth.apiKey,
-    "x-user-id": auth.userId,
-  };
+function apiHeaders(): Record<string, string> {
+  const headers: Record<string, string> = {};
+  const apiKey = getApiKey();
+  if (apiKey) headers["x-api-key"] = apiKey;
+  return headers;
 }
 
-export async function listConversations(
-  apiBase: string,
-  auth: AuthHeaders,
-): Promise<StudyConversation[]> {
-  const r = await fetch(`${apiBase.replace(/\/$/, "")}/ai-triage-study/conversations`, {
-    headers: headers(auth),
-  });
-  if (!r.ok) throw new Error(`list conversations failed: ${r.status}`);
-  const body = await r.json();
-  return body.conversations ?? [];
+function apiBase(): string {
+  return getClientApiBase();
 }
 
-export async function createConversation(
-  apiBase: string,
-  auth: AuthHeaders,
-  testId: string,
-): Promise<StudyConversation> {
-  const r = await fetch(`${apiBase.replace(/\/$/, "")}/ai-triage-study/conversations`, {
+export async function createConversation(testId: string): Promise<StudyConversation> {
+  const r = await fetch(`${apiBase()}/ai-triage-study/conversations`, {
     method: "POST",
-    headers: { ...headers(auth), "content-type": "application/json" },
+    headers: { ...apiHeaders(), "content-type": "application/json" },
     body: JSON.stringify({ test_id: testId }),
   });
   if (!r.ok) {
@@ -56,9 +48,18 @@ export async function createConversation(
   return r.json();
 }
 
+export async function getConversation(
+  conversationId: string,
+): Promise<StudyConversation & { turns: StudyTurn[] }> {
+  const r = await fetch(
+    `${apiBase()}/ai-triage-study/conversations/${encodeURIComponent(conversationId)}`,
+    { headers: apiHeaders() },
+  );
+  if (!r.ok) throw new Error(`get conversation failed: ${r.status}`);
+  return r.json();
+}
+
 export async function postUtterance(args: {
-  apiBase: string;
-  auth: AuthHeaders;
   conversationId: string;
   audio?: UploadableAudio;
   text?: string;
@@ -71,10 +72,10 @@ export async function postUtterance(args: {
   }
 
   const r = await fetch(
-    `${args.apiBase.replace(/\/$/, "")}/ai-triage-study/conversations/${encodeURIComponent(args.conversationId)}/utterances`,
+    `${apiBase()}/ai-triage-study/conversations/${encodeURIComponent(args.conversationId)}/utterances`,
     {
       method: "POST",
-      headers: headers(args.auth),
+      headers: apiHeaders(),
       body: form,
     },
   );
@@ -86,12 +87,22 @@ export async function postUtterance(args: {
 }
 
 export function exportConversationUrl(
-  apiBase: string,
   conversationId: string,
   format: "json" | "csv" | "txt",
 ): string {
-  const base = apiBase.replace(/\/$/, "");
+  const base = apiBase();
   return `${base}/ai-triage-study/conversations/${encodeURIComponent(conversationId)}/export?format=${format}`;
+}
+
+export async function exportConversation(
+  conversationId: string,
+  format: "json" | "csv" | "txt",
+): Promise<Blob> {
+  const r = await fetch(exportConversationUrl(conversationId, format), {
+    headers: apiHeaders(),
+  });
+  if (!r.ok) throw new Error(`export failed: ${r.status}`);
+  return r.blob();
 }
 
 export const TEST_ID_PATTERN = /^[a-zA-Z0-9_-]+$/;

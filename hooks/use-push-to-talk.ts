@@ -22,6 +22,11 @@ export interface UsePushToTalk {
   requestPermission: () => Promise<void>;
 }
 
+const TIMESLICE_MS = 200;
+const MIN_RECORD_MS = 600;
+const FLUSH_BEFORE_STOP_MS = 200;
+const MIN_BLOB_BYTES = 800;
+
 /**
  * Hold-spacebar-to-talk. Filters key repeats, ignores presses while a text
  * input is focused, and aborts cleanly if the tab becomes hidden mid-record.
@@ -39,6 +44,7 @@ export function usePushToTalk({
   const streamRef = useRef<MediaStream | null>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
+  const mimeTypeRef = useRef("audio/webm");
   const audioCtxRef = useRef<AudioContext | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const rafRef = useRef<number | null>(null);
@@ -47,9 +53,6 @@ export function usePushToTalk({
   const recordStartedAtRef = useRef(0);
   const onRecordedRef = useRef(onRecorded);
   onRecordedRef.current = onRecorded;
-
-  const MIN_RECORD_MS = 300;
-  const MIN_BLOB_BYTES = 200;
 
   const releaseStream = useCallback(() => {
     if (rafRef.current != null) {
@@ -80,15 +83,27 @@ export function usePushToTalk({
     }
   }, []);
 
-  const finalizeRecorder = useCallback((rec: MediaRecorder) => {
+  const finalizeRecorder = useCallback(async (rec: MediaRecorder) => {
     if (rec.state === "inactive") return;
     try {
-      if (rec.state === "recording") rec.requestData();
-      rec.stop();
+      if (rec.state === "recording" && typeof rec.requestData === "function") {
+        rec.requestData();
+        await new Promise((r) => setTimeout(r, FLUSH_BEFORE_STOP_MS));
+      }
+      if (rec.state === "recording") rec.stop();
     } catch {
       // ignore
     }
   }, []);
+
+  const scheduleFinalize = useCallback(
+    (rec: MediaRecorder) => {
+      const elapsed = Date.now() - recordStartedAtRef.current;
+      const wait = Math.max(0, MIN_RECORD_MS - elapsed);
+      window.setTimeout(() => void finalizeRecorder(rec), wait);
+    },
+    [finalizeRecorder],
+  );
 
   const startRecording = useCallback(async () => {
     if (isRecording || disabled || startingRef.current) return;
@@ -111,8 +126,6 @@ export function usePushToTalk({
       const buf = new Uint8Array(analyser.frequencyBinCount);
       const tick = () => {
         if (!analyserRef.current) return;
-        // Web AudioAPI: getByteTimeDomainData expects a Uint8Array;
-        // TS DOM lib may type it as ArrayBuffer-backed; cast for typing.
         analyserRef.current.getByteTimeDomainData(buf as unknown as Uint8Array<ArrayBuffer>);
         let sum = 0;
         for (const v of buf) {
@@ -127,13 +140,15 @@ export function usePushToTalk({
 
       const mime = pickMime();
       const rec = mime ? new MediaRecorder(stream, { mimeType: mime }) : new MediaRecorder(stream);
+      mimeTypeRef.current = rec.mimeType || mime || "audio/webm";
       recorderRef.current = rec;
       chunksRef.current = [];
       rec.addEventListener("dataavailable", (e) => {
         if (e.data && e.data.size > 0) chunksRef.current.push(e.data);
       });
       rec.addEventListener("stop", async () => {
-        const blob = new Blob(chunksRef.current, { type: rec.mimeType || "audio/webm" });
+        pendingStopRef.current = false;
+        const blob = new Blob(chunksRef.current, { type: mimeTypeRef.current });
         chunksRef.current = [];
         releaseStream();
         setIsRecording(false);
@@ -145,23 +160,15 @@ export function usePushToTalk({
           } catch (e) {
             setError(e instanceof Error ? e.message : String(e));
           }
-        } else if (!pendingStopRef.current) {
-          setError("Recording too short — hold space a little longer.");
+        } else {
+          setError("Recording too short — hold space at least one second.");
         }
       });
-      // Timeslice chunks help browsers produce a valid container on stop.
-      rec.start(250);
+      rec.start(TIMESLICE_MS);
       recordStartedAtRef.current = Date.now();
       setIsRecording(true);
       startingRef.current = false;
-      if (pendingStopRef.current) {
-        const elapsed = Date.now() - recordStartedAtRef.current;
-        const wait = Math.max(0, MIN_RECORD_MS - elapsed);
-        window.setTimeout(() => {
-          const active = recorderRef.current;
-          if (active) finalizeRecorder(active);
-        }, wait);
-      }
+      if (pendingStopRef.current) scheduleFinalize(rec);
     } catch (e) {
       startingRef.current = false;
       pendingStopRef.current = false;
@@ -170,7 +177,7 @@ export function usePushToTalk({
       releaseStream();
       setIsRecording(false);
     }
-  }, [disabled, finalizeRecorder, isRecording, releaseStream]);
+  }, [disabled, isRecording, releaseStream, scheduleFinalize]);
 
   const stopRecording = useCallback(() => {
     const rec = recorderRef.current;
@@ -179,9 +186,7 @@ export function usePushToTalk({
       return;
     }
     if (rec && rec.state !== "inactive") {
-      const elapsed = Date.now() - recordStartedAtRef.current;
-      const wait = Math.max(0, MIN_RECORD_MS - elapsed);
-      window.setTimeout(() => finalizeRecorder(rec), wait);
+      scheduleFinalize(rec);
       return;
     }
     startingRef.current = false;
@@ -189,9 +194,8 @@ export function usePushToTalk({
     releaseStream();
     setIsRecording(false);
     setLevel(0);
-  }, [finalizeRecorder, releaseStream]);
+  }, [releaseStream, scheduleFinalize]);
 
-  // Spacebar bindings (document-level).
   useEffect(() => {
     const isTypingTarget = (el: EventTarget | null): boolean => {
       if (!(el instanceof HTMLElement)) return false;
@@ -227,12 +231,10 @@ export function usePushToTalk({
     };
   }, [disabled, key, startRecording, stopRecording]);
 
-  // Best-effort permission query on mount.
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
-        // `permissions` not in all browsers; type cast minimally.
         const perm = (
           navigator as unknown as {
             permissions?: { query: (q: PermissionDescriptor) => Promise<PermissionStatus> };
@@ -243,7 +245,7 @@ export function usePushToTalk({
           if (!cancelled) setPermission(status.state as PermissionState);
         }
       } catch {
-        // ignore — many browsers don't expose "microphone" via the Permissions API.
+        // ignore
       }
     })();
     return () => {

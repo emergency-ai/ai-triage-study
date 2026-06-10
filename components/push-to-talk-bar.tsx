@@ -28,7 +28,7 @@ export function PushToTalkBar(props: PushToTalkBarProps) {
           ? "Listening… release space to send."
           : busy
             ? "Working…"
-            : "Hold space and talk.";
+            : "Hold space at least one second and talk.";
 
   return (
     <Box>

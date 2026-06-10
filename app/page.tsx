@@ -131,6 +131,11 @@ export default function Page() {
                   awaitingConfirmation={false}
                 />
               )}
+              {ptt.error ? (
+                <Text fontSize="xs" color="red.300">
+                  {ptt.error}
+                </Text>
+              ) : null}
               {stream.lastError ? (
                 <Text fontSize="xs" color="red.300">
                   {stream.lastError}

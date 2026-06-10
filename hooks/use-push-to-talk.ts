@@ -42,8 +42,14 @@ export function usePushToTalk({
   const audioCtxRef = useRef<AudioContext | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const rafRef = useRef<number | null>(null);
+  const startingRef = useRef(false);
+  const pendingStopRef = useRef(false);
+  const recordStartedAtRef = useRef(0);
   const onRecordedRef = useRef(onRecorded);
   onRecordedRef.current = onRecorded;
+
+  const MIN_RECORD_MS = 300;
+  const MIN_BLOB_BYTES = 200;
 
   const releaseStream = useCallback(() => {
     if (rafRef.current != null) {
@@ -74,8 +80,20 @@ export function usePushToTalk({
     }
   }, []);
 
+  const finalizeRecorder = useCallback((rec: MediaRecorder) => {
+    if (rec.state === "inactive") return;
+    try {
+      if (rec.state === "recording") rec.requestData();
+      rec.stop();
+    } catch {
+      // ignore
+    }
+  }, []);
+
   const startRecording = useCallback(async () => {
-    if (isRecording || disabled) return;
+    if (isRecording || disabled || startingRef.current) return;
+    startingRef.current = true;
+    pendingStopRef.current = false;
     setError(null);
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -120,38 +138,58 @@ export function usePushToTalk({
         releaseStream();
         setIsRecording(false);
         setLevel(0);
-        if (blob.size > 0) {
+        startingRef.current = false;
+        if (blob.size >= MIN_BLOB_BYTES) {
           try {
             await onRecordedRef.current(blob);
           } catch (e) {
             setError(e instanceof Error ? e.message : String(e));
           }
+        } else if (!pendingStopRef.current) {
+          setError("Recording too short — hold space a little longer.");
         }
       });
-      rec.start();
+      // Timeslice chunks help browsers produce a valid container on stop.
+      rec.start(250);
+      recordStartedAtRef.current = Date.now();
       setIsRecording(true);
+      startingRef.current = false;
+      if (pendingStopRef.current) {
+        const elapsed = Date.now() - recordStartedAtRef.current;
+        const wait = Math.max(0, MIN_RECORD_MS - elapsed);
+        window.setTimeout(() => {
+          const active = recorderRef.current;
+          if (active) finalizeRecorder(active);
+        }, wait);
+      }
     } catch (e) {
+      startingRef.current = false;
+      pendingStopRef.current = false;
       setPermission((p) => (p === "granted" ? p : "denied"));
       setError(e instanceof Error ? e.message : String(e));
       releaseStream();
       setIsRecording(false);
     }
-  }, [disabled, isRecording, releaseStream]);
+  }, [disabled, finalizeRecorder, isRecording, releaseStream]);
 
   const stopRecording = useCallback(() => {
     const rec = recorderRef.current;
-    if (rec && rec.state !== "inactive") {
-      try {
-        rec.stop();
-      } catch {
-        // ignore
-      }
-    } else {
-      releaseStream();
-      setIsRecording(false);
-      setLevel(0);
+    if (startingRef.current && !rec) {
+      pendingStopRef.current = true;
+      return;
     }
-  }, [releaseStream]);
+    if (rec && rec.state !== "inactive") {
+      const elapsed = Date.now() - recordStartedAtRef.current;
+      const wait = Math.max(0, MIN_RECORD_MS - elapsed);
+      window.setTimeout(() => finalizeRecorder(rec), wait);
+      return;
+    }
+    startingRef.current = false;
+    pendingStopRef.current = false;
+    releaseStream();
+    setIsRecording(false);
+    setLevel(0);
+  }, [finalizeRecorder, releaseStream]);
 
   // Spacebar bindings (document-level).
   useEffect(() => {

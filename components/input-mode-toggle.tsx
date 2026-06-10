@@ -50,12 +50,13 @@ export function InputModeToggle({
   };
 
   return (
-    <Box>
+    <Box width="fit-content">
       <Text fontSize="xs" textTransform="uppercase" letterSpacing="wide" mb="2" opacity={0.6}>
         Input mode
       </Text>
       <HStack
         gap="0"
+        width="fit-content"
         bg="gray.900"
         borderRadius="md"
         borderWidth="1px"

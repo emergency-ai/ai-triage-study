@@ -15,13 +15,22 @@ export interface UseStudyStream {
 }
 
 function turnsFromHistory(
-  turns: Array<{ turn_id: string; role: string; text: string }>,
+  turns: Array<{ turn_id: string; role: string; text: string; created_at?: number }>,
 ): ChatTurn[] {
-  return turns.map((t) => ({
-    id: t.turn_id,
-    role: t.role === "user" ? "user" : "agent",
-    text: t.text,
-  }));
+  return [...turns]
+    .sort((a, b) => {
+      const at = a.created_at ?? 0;
+      const bt = b.created_at ?? 0;
+      if (at !== bt) return at - bt;
+      const ar = a.role === "user" ? 0 : 1;
+      const br = b.role === "user" ? 0 : 1;
+      return ar - br;
+    })
+    .map((t) => ({
+      id: t.turn_id,
+      role: t.role === "user" ? "user" : "agent",
+      text: t.text,
+    }));
 }
 
 export function useStudyStream(conversationId: string | null): UseStudyStream {

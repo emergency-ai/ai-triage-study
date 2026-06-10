@@ -15,8 +15,8 @@ importers:
         specifier: 11.14.0
         version: 11.14.0(@types/react@19.2.14)(react@19.2.6)
       '@sara/ambient-agent-client':
-        specifier: file:../ambient-agent/packages/client
-        version: file:../ambient-agent/packages/client(react@19.2.6)
+        specifier: file:./vendor/ambient-agent-client
+        version: file:vendor/ambient-agent-client(react@19.2.6)
       lucide-react:
         specifier: ^1.17.0
         version: 1.17.0(react@19.2.6)
@@ -399,8 +399,8 @@ packages:
     resolution: {integrity: sha512-YaHK+p5DaN8AUpsRx5OqqGxaZzn8uNIdVhP+K1cjvjv3+Qa9D/75/A1dPyLmfKrSRJc8UoR9WN9fxQX0rVzhzQ==}
     engines: {node: '>=20'}
 
-  '@sara/ambient-agent-client@file:../ambient-agent/packages/client':
-    resolution: {directory: ../ambient-agent/packages/client, type: directory}
+  '@sara/ambient-agent-client@file:vendor/ambient-agent-client':
+    resolution: {directory: vendor/ambient-agent-client, type: directory}
     peerDependencies:
       react: '>=18'
 
@@ -1283,7 +1283,7 @@ snapshots:
 
   '@pandacss/is-valid-prop@1.11.3': {}
 
-  '@sara/ambient-agent-client@file:../ambient-agent/packages/client(react@19.2.6)':
+  '@sara/ambient-agent-client@file:vendor/ambient-agent-client(react@19.2.6)':
     dependencies:
       react: 19.2.6
 

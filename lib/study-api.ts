@@ -59,13 +59,25 @@ export async function getConversation(
   return r.json();
 }
 
+async function blobToBase64(blob: Blob): Promise<string> {
+  const buffer = await blob.arrayBuffer();
+  const bytes = new Uint8Array(buffer);
+  let binary = "";
+  for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+  return btoa(binary);
+}
+
 export async function postUtterance(args: {
   conversationId: string;
   audio?: UploadableAudio;
   text?: string;
 }): Promise<TriageResponse> {
   const form = new FormData();
-  if (args.audio) {
+  if (args.audio && args.audio instanceof Blob) {
+    // Base64 text fields avoid API Gateway corrupting multipart binary uploads.
+    form.set("audio_base64", await blobToBase64(args.audio));
+    form.set("audio_mime", args.audio.type || "audio/wav");
+  } else if (args.audio) {
     appendAudioToFormData(form, args.audio);
   } else if (args.text) {
     form.set("text", args.text);

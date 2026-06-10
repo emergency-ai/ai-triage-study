@@ -11,7 +11,6 @@ import { SaraLogo } from "@/components/sara-logo";
 import { TextInputBar } from "@/components/text-input-bar";
 import { useStudyStream } from "@/hooks/use-study-stream";
 import { usePushToTalk } from "@/hooks/use-push-to-talk";
-import { saveCachedConversation } from "@/lib/conversation-cache";
 import { createConversation } from "@/lib/study-api";
 
 export default function Page() {
@@ -41,7 +40,6 @@ export default function Page() {
 
   const handleCreateConversation = async (testId: string) => {
     const conv = await createConversation(testId);
-    saveCachedConversation(conv);
     setConversationId(conv.conversation_id);
   };
 

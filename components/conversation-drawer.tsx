@@ -15,8 +15,7 @@ import { Download, Menu as MenuIcon, Plus } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { MarqueeText } from "@/components/marquee-text";
 import { NewConversationDialog } from "@/components/new-conversation-dialog";
-import { listCachedConversations, saveCachedConversation } from "@/lib/conversation-cache";
-import { createConversation, exportConversation, type StudyConversation } from "@/lib/study-api";
+import { createConversation, exportConversation, listConversations, type StudyConversation } from "@/lib/study-api";
 
 export interface ConversationDrawerProps {
   selectedConversationId: string | null;
@@ -81,19 +80,30 @@ export function ConversationDrawer({
   const [open, setOpen] = useState(false);
   const [newOpen, setNewOpen] = useState(false);
   const [conversations, setConversations] = useState<StudyConversation[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
-  const loadConversations = useCallback(() => {
-    setConversations(listCachedConversations());
+  const loadConversations = useCallback(async () => {
+    setLoading(true);
+    setLoadError(null);
+    try {
+      const items = await listConversations();
+      setConversations(items);
+    } catch (e) {
+      setConversations([]);
+      setLoadError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   useEffect(() => {
-    if (open) loadConversations();
+    if (open) void loadConversations();
   }, [open, loadConversations]);
 
   const handleCreate = async (testId: string) => {
     const conv = await createConversation(testId);
-    saveCachedConversation(conv);
-    loadConversations();
+    await loadConversations();
     onSelectConversation(conv.conversation_id);
     setOpen(false);
   };
@@ -137,7 +147,15 @@ export function ConversationDrawer({
               <Drawer.CloseTrigger />
             </Drawer.Header>
             <Drawer.Body flex="1" overflowY="auto" py="4" px="4" minH="0">
-              {conversations.length === 0 ? (
+              {loading ? (
+                <Text fontSize="sm" opacity={0.7}>
+                  Loading conversations…
+                </Text>
+              ) : loadError ? (
+                <Text fontSize="sm" color="red.300">
+                  {loadError}
+                </Text>
+              ) : conversations.length === 0 ? (
                 <Text fontSize="sm" opacity={0.7}>
                   No test conversations yet. Start one with your Test ID.
                 </Text>

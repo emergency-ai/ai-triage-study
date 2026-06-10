@@ -11,6 +11,8 @@
     "format:check": "prettier --check ."
   },
   "dependencies": {
+    "@aws-sdk/client-dynamodb": "^3.1065.0",
+    "@aws-sdk/lib-dynamodb": "^3.1065.0",
     "@chakra-ui/react": "3.35.0",
     "@emotion/react": "11.14.0",
     "@sara/ambient-agent-client": "file:./vendor/ambient-agent-client",

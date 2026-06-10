@@ -35,6 +35,17 @@ function apiBase(): string {
   return getClientApiBase();
 }
 
+/** Lists conversations from DynamoDB (via Next.js server route). */
+export async function listConversations(testId?: string): Promise<StudyConversation[]> {
+  const params = testId ? `?test_id=${encodeURIComponent(testId)}` : "";
+  const r = await fetch(`/api/study/conversations${params}`);
+  if (!r.ok) {
+    const body = await r.json().catch(() => ({}));
+    throw new Error(body.detail ?? `list conversations failed: ${r.status}`);
+  }
+  return r.json();
+}
+
 export async function createConversation(testId: string): Promise<StudyConversation> {
   const r = await fetch(`${apiBase()}/ai-triage-study/conversations`, {
     method: "POST",

@@ -2,7 +2,6 @@
 
 import type { ChatTurn } from "@sara/ambient-agent-client";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { updateCachedConversation } from "@/lib/conversation-cache";
 import { getConversation, postUtterance } from "@/lib/study-api";
 import type { UploadableAudio } from "@sara/ambient-agent-client";
 
@@ -75,21 +74,13 @@ export function useStudyStream(conversationId: string | null): UseStudyStream {
       ]);
 
       try {
-        const result = await postUtterance({
+        await postUtterance({
           conversationId,
           ...payload,
         });
 
-        setTurns((prev) =>
-          prev.map((t) => {
-            if (t.id === userTurnId) return { ...t, text: result.transcript };
-            if (t.id === agentTurnId) return { ...t, text: result.profile_text };
-            return t;
-          }),
-        );
-
         const conv = await getConversation(conversationId);
-        updateCachedConversation(conv);
+        setTurns(turnsFromHistory(conv.turns));
       } catch (e) {
         setLastError(e instanceof Error ? e.message : String(e));
         setTurns((prev) => prev.filter((t) => t.id !== agentTurnId));

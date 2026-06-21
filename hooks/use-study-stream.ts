@@ -1,21 +1,37 @@
 "use client";
 
-import type { ChatTurn } from "@sara/ambient-agent-client";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { getConversation, postUtterance } from "@/lib/study-api";
 import type { UploadableAudio } from "@sara/ambient-agent-client";
 
+export interface StudyChatTurn {
+  id: string;
+  role: "user" | "agent";
+  text: string;
+  inputMode?: string;
+  narrationToTranscriptMs?: number | null;
+  narrationToProfileMs?: number | null;
+}
+
 export interface UseStudyStream {
-  turns: ChatTurn[];
+  turns: StudyChatTurn[];
   busy: boolean;
   lastError: string | null;
-  sendAudio: (audio: UploadableAudio) => Promise<void>;
-  sendText: (text: string) => Promise<void>;
+  sendAudio: (audio: UploadableAudio, options?: { captureToUploadMs?: number }) => Promise<void>;
+  sendText: (text: string, options?: { captureToUploadMs?: number }) => Promise<void>;
 }
 
 function turnsFromHistory(
-  turns: Array<{ turn_id: string; role: string; text: string; created_at?: number }>,
-): ChatTurn[] {
+  turns: Array<{
+    turn_id: string;
+    role: string;
+    text: string;
+    created_at?: number;
+    input_mode?: string;
+    narration_to_transcript_ms?: number | null;
+    narration_to_profile_ms?: number | null;
+  }>,
+): StudyChatTurn[] {
   return [...turns]
     .sort((a, b) => {
       const at = a.created_at ?? 0;
@@ -29,11 +45,14 @@ function turnsFromHistory(
       id: t.turn_id,
       role: t.role === "user" ? "user" : "agent",
       text: t.text,
+      inputMode: t.input_mode,
+      narrationToTranscriptMs: t.narration_to_transcript_ms,
+      narrationToProfileMs: t.narration_to_profile_ms,
     }));
 }
 
 export function useStudyStream(conversationId: string | null): UseStudyStream {
-  const [turns, setTurns] = useState<ChatTurn[]>([]);
+  const [turns, setTurns] = useState<StudyChatTurn[]>([]);
   const [busy, setBusy] = useState(false);
   const [lastError, setLastError] = useState<string | null>(null);
   const turnIdRef = useRef(0);
@@ -60,7 +79,11 @@ export function useStudyStream(conversationId: string | null): UseStudyStream {
   }, [conversationId]);
 
   const runUtterance = useCallback(
-    async (payload: { audio?: UploadableAudio; text?: string }) => {
+    async (payload: {
+      audio?: UploadableAudio;
+      text?: string;
+      captureToUploadMs?: number;
+    }) => {
       if (!conversationId) return;
       setBusy(true);
       setLastError(null);
@@ -92,11 +115,16 @@ export function useStudyStream(conversationId: string | null): UseStudyStream {
   );
 
   const sendAudio = useCallback(
-    async (audio: UploadableAudio) => runUtterance({ audio }),
+    async (audio: UploadableAudio, options?: { captureToUploadMs?: number }) =>
+      runUtterance({ audio, captureToUploadMs: options?.captureToUploadMs }),
     [runUtterance],
   );
 
-  const sendText = useCallback(async (text: string) => runUtterance({ text }), [runUtterance]);
+  const sendText = useCallback(
+    async (text: string, options?: { captureToUploadMs?: number }) =>
+      runUtterance({ text, captureToUploadMs: options?.captureToUploadMs ?? 0 }),
+    [runUtterance],
+  );
 
   return { turns, busy, lastError, sendAudio, sendText };
 }

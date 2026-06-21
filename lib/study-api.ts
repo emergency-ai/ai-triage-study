@@ -16,12 +16,16 @@ export interface StudyTurn {
   input_mode: string;
   created_at: number;
   profile_json?: Record<string, unknown> | null;
+  narration_to_transcript_ms?: number | null;
+  narration_to_profile_ms?: number | null;
 }
 
 export interface TriageResponse {
   transcript: string;
   profile: Record<string, unknown>;
   profile_text: string;
+  narration_to_transcript_ms?: number;
+  narration_to_profile_ms?: number;
 }
 
 function apiHeaders(): Record<string, string> {
@@ -82,13 +86,17 @@ export async function postUtterance(args: {
   conversationId: string;
   audio?: UploadableAudio;
   text?: string;
+  captureToUploadMs?: number;
 }): Promise<TriageResponse> {
-  const payload: Record<string, string> = {};
+  const payload: Record<string, string | number> = {};
   if (args.audio && args.audio instanceof Blob) {
     payload.audio_base64 = await blobToBase64(args.audio);
     payload.audio_mime = args.audio.type || "audio/wav";
   } else if (args.text) {
     payload.text = args.text;
+  }
+  if (args.captureToUploadMs != null) {
+    payload.capture_to_upload_ms = args.captureToUploadMs;
   }
 
   const r = await fetch(

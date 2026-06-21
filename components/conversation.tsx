@@ -1,10 +1,11 @@
 "use client";
 
-import { Box, HStack, Spinner, Stack, Text } from "@chakra-ui/react";
-import type { ChatTurn } from "@sara/ambient-agent-client";
+import { Badge, Box, HStack, Spinner, Stack, Text } from "@chakra-ui/react";
 import { useEffect, useRef } from "react";
 import { SaraLogo } from "@/components/sara-logo";
 import type { InputMode } from "@/components/input-mode-toggle";
+import type { StudyChatTurn } from "@/hooks/use-study-stream";
+import { formatLatencyMs } from "@/lib/format-latency";
 
 const EMPTY_HINT: Record<InputMode, string> = {
   voice: "Hold the spacebar and talk. Release to send.",
@@ -26,7 +27,7 @@ export function Conversation({
   turns,
   inputMode = "voice",
 }: {
-  turns: ChatTurn[];
+  turns: StudyChatTurn[];
   inputMode?: InputMode;
 }) {
   const endRef = useRef<HTMLDivElement | null>(null);
@@ -50,12 +51,17 @@ export function Conversation({
   );
 }
 
-function Turn({ turn }: { turn: ChatTurn }) {
+function Turn({ turn }: { turn: StudyChatTurn }) {
   const isUser = turn.role === "user";
   const isPending = !turn.text;
   const pendingLabel = isUser ? "Transcribing…" : "Generating profile…";
   const displayText = isUser ? turn.text : turn.text;
   const showJsonBadge = !isUser && turn.text && isValidJson(turn.text);
+  const showLatencyBadges =
+    !isUser &&
+    !isPending &&
+    (turn.narrationToProfileMs != null ||
+      (turn.inputMode === "voice" && turn.narrationToTranscriptMs != null));
 
   return (
     <HStack align="flex-start" gap="3" justify={isUser ? "flex-end" : "flex-start"}>
@@ -89,6 +95,30 @@ function Turn({ turn }: { turn: ChatTurn }) {
             ) : (
               displayText
             )}
+            {showLatencyBadges ? (
+              <HStack gap="2" mt="2" pt="2" borderTopWidth="1px" borderColor="whiteAlpha.200">
+                {turn.inputMode === "voice" && turn.narrationToTranscriptMs != null ? (
+                  <Badge
+                    size="sm"
+                    variant="subtle"
+                    colorPalette="cyan"
+                    title="Point A (press) to point C (transcript ready)"
+                  >
+                    A→C {formatLatencyMs(turn.narrationToTranscriptMs)}
+                  </Badge>
+                ) : null}
+                {turn.narrationToProfileMs != null ? (
+                  <Badge
+                    size="sm"
+                    variant="subtle"
+                    colorPalette="purple"
+                    title="Point A (press) to point D (profile ready)"
+                  >
+                    A→D {formatLatencyMs(turn.narrationToProfileMs)}
+                  </Badge>
+                ) : null}
+              </HStack>
+            ) : null}
           </Box>
         )}
       </Box>

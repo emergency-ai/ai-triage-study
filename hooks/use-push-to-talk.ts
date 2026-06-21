@@ -7,6 +7,8 @@ export type PermissionState = "unknown" | "granted" | "denied" | "prompt";
 export interface UsePushToTalkArgs {
   /** Called once with the final audio Blob when the user releases the spacebar. */
   onRecorded: (blob: Blob) => void | Promise<void>;
+  /** Called when mic capture begins (spacebar press / point A). */
+  onRecordingStart?: () => void;
   /** Disable recording entirely (e.g. while the agent is replying with TTS). */
   disabled?: boolean;
   /** Key to bind to. Defaults to " " (space). */
@@ -31,6 +33,7 @@ const MIN_BLOB_BYTES = 1000;
  */
 export function usePushToTalk({
   onRecorded,
+  onRecordingStart,
   disabled,
   key = " ",
 }: UsePushToTalkArgs): UsePushToTalk {
@@ -52,6 +55,8 @@ export function usePushToTalk({
   const recordStartedAtRef = useRef(0);
   const onRecordedRef = useRef(onRecorded);
   onRecordedRef.current = onRecorded;
+  const onRecordingStartRef = useRef(onRecordingStart);
+  onRecordingStartRef.current = onRecordingStart;
 
   const releaseStream = useCallback(() => {
     if (rafRef.current != null) {
@@ -178,6 +183,7 @@ export function usePushToTalk({
 
       recordStartedAtRef.current = Date.now();
       setIsRecording(true);
+      onRecordingStartRef.current?.();
       startingRef.current = false;
       if (pendingStopRef.current) scheduleFinish();
     } catch (e) {

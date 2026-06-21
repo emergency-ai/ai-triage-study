@@ -1,7 +1,7 @@
 "use client";
 
 import { Box, Grid, GridItem, Heading, HStack, Stack, Text } from "@chakra-ui/react";
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { Conversation } from "@/components/conversation";
 import { ConversationDrawer } from "@/components/conversation-drawer";
 import { type InputMode, InputModeToggle } from "@/components/input-mode-toggle";
@@ -18,23 +18,33 @@ export default function Page() {
   const [newOpen, setNewOpen] = useState(false);
   const stream = useStudyStream(conversationId);
   const [inputMode, setInputMode] = useState<InputMode>("voice");
+  const narrationStartedAtRef = useRef<number | null>(null);
+
+  const onRecordingStart = useCallback(() => {
+    narrationStartedAtRef.current = performance.now();
+  }, []);
 
   const onRecorded = useCallback(
     async (blob: Blob) => {
-      await stream.sendAudio(blob);
+      const startedAt = narrationStartedAtRef.current;
+      narrationStartedAtRef.current = null;
+      const captureToUploadMs =
+        startedAt != null ? Math.max(0, Math.round(performance.now() - startedAt)) : undefined;
+      await stream.sendAudio(blob, { captureToUploadMs });
     },
     [stream],
   );
 
   const onTextSubmit = useCallback(
     async (text: string) => {
-      await stream.sendText(text);
+      await stream.sendText(text, { captureToUploadMs: 0 });
     },
     [stream],
   );
 
   const ptt = usePushToTalk({
     onRecorded,
+    onRecordingStart,
     disabled: stream.busy || inputMode === "text" || !conversationId,
   });
 

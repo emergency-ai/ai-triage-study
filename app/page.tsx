@@ -30,14 +30,15 @@ export default function Page() {
       narrationStartedAtRef.current = null;
       const captureToUploadMs =
         startedAt != null ? Math.max(0, Math.round(performance.now() - startedAt)) : undefined;
-      await stream.sendAudio(blob, { captureToUploadMs });
+      await stream.sendAudio(blob, { captureToUploadMs, narrationStartedAt: startedAt ?? undefined });
     },
     [stream],
   );
 
   const onTextSubmit = useCallback(
     async (text: string) => {
-      await stream.sendText(text, { captureToUploadMs: 0 });
+      const startedAt = performance.now();
+      await stream.sendText(text, { captureToUploadMs: 0, narrationStartedAt: startedAt });
     },
     [stream],
   );

@@ -2,6 +2,11 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { getConversation, postUtterance } from "@/lib/study-api";
+import {
+  applyLatencyToLastAgentTurn,
+  logWorkflowLatency,
+  resolveWorkflowLatency,
+} from "@/lib/workflow-latency";
 import type { UploadableAudio } from "@sara/ambient-agent-client";
 
 export interface StudyChatTurn {
@@ -13,12 +18,17 @@ export interface StudyChatTurn {
   narrationToProfileMs?: number | null;
 }
 
+export interface UtteranceOptions {
+  captureToUploadMs?: number;
+  narrationStartedAt?: number;
+}
+
 export interface UseStudyStream {
   turns: StudyChatTurn[];
   busy: boolean;
   lastError: string | null;
-  sendAudio: (audio: UploadableAudio, options?: { captureToUploadMs?: number }) => Promise<void>;
-  sendText: (text: string, options?: { captureToUploadMs?: number }) => Promise<void>;
+  sendAudio: (audio: UploadableAudio, options?: UtteranceOptions) => Promise<void>;
+  sendText: (text: string, options?: UtteranceOptions) => Promise<void>;
 }
 
 function turnsFromHistory(
@@ -46,8 +56,8 @@ function turnsFromHistory(
       role: t.role === "user" ? "user" : "agent",
       text: t.text,
       inputMode: t.input_mode,
-      narrationToTranscriptMs: t.narration_to_transcript_ms,
-      narrationToProfileMs: t.narration_to_profile_ms,
+      narrationToTranscriptMs: t.narration_to_transcript_ms ?? undefined,
+      narrationToProfileMs: t.narration_to_profile_ms ?? undefined,
     }));
 }
 
@@ -83,10 +93,16 @@ export function useStudyStream(conversationId: string | null): UseStudyStream {
       audio?: UploadableAudio;
       text?: string;
       captureToUploadMs?: number;
+      narrationStartedAt?: number;
     }) => {
       if (!conversationId) return;
       setBusy(true);
       setLastError(null);
+
+      const inputMode = payload.audio ? "voice" : "text";
+      const narrationStartedAt =
+        payload.narrationStartedAt ??
+        (inputMode === "text" ? performance.now() : undefined);
 
       const userTurnId = `u-${++turnIdRef.current}`;
       const agentTurnId = `a-${++turnIdRef.current}`;
@@ -97,13 +113,24 @@ export function useStudyStream(conversationId: string | null): UseStudyStream {
       ]);
 
       try {
-        await postUtterance({
+        const response = await postUtterance({
           conversationId,
-          ...payload,
+          audio: payload.audio,
+          text: payload.text,
+          captureToUploadMs: payload.captureToUploadMs,
         });
 
+        const latency = resolveWorkflowLatency({
+          inputMode,
+          narrationStartedAt,
+          serverTranscriptMs: response.narration_to_transcript_ms,
+          serverProfileMs: response.narration_to_profile_ms,
+        });
+        logWorkflowLatency(latency);
+
         const conv = await getConversation(conversationId);
-        setTurns(turnsFromHistory(conv.turns));
+        const mergedTurns = applyLatencyToLastAgentTurn(turnsFromHistory(conv.turns), latency);
+        setTurns(mergedTurns);
       } catch (e) {
         setLastError(e instanceof Error ? e.message : String(e));
         setTurns((prev) => prev.filter((t) => t.id !== agentTurnId));
@@ -115,14 +142,22 @@ export function useStudyStream(conversationId: string | null): UseStudyStream {
   );
 
   const sendAudio = useCallback(
-    async (audio: UploadableAudio, options?: { captureToUploadMs?: number }) =>
-      runUtterance({ audio, captureToUploadMs: options?.captureToUploadMs }),
+    async (audio: UploadableAudio, options?: UtteranceOptions) =>
+      runUtterance({
+        audio,
+        captureToUploadMs: options?.captureToUploadMs,
+        narrationStartedAt: options?.narrationStartedAt,
+      }),
     [runUtterance],
   );
 
   const sendText = useCallback(
-    async (text: string, options?: { captureToUploadMs?: number }) =>
-      runUtterance({ text, captureToUploadMs: options?.captureToUploadMs ?? 0 }),
+    async (text: string, options?: UtteranceOptions) =>
+      runUtterance({
+        text,
+        captureToUploadMs: options?.captureToUploadMs ?? 0,
+        narrationStartedAt: options?.narrationStartedAt ?? performance.now(),
+      }),
     [runUtterance],
   );
 

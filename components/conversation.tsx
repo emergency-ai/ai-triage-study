@@ -100,18 +100,18 @@ function Turn({ turn }: { turn: StudyChatTurn }) {
                 {typeof turn.narrationToTranscriptMs === "number" &&
                 (turn.inputMode === "voice" || turn.inputMode == null) ? (
                   <LatencyBadge
-                    label="A→C"
+                    label="Transcript"
                     ms={turn.narrationToTranscriptMs}
                     tone="cyan"
-                    title="Point A (press) to point C (transcript ready)"
+                    title="Narration start to transcript ready"
                   />
                 ) : null}
                 {typeof turn.narrationToProfileMs === "number" ? (
                   <LatencyBadge
-                    label="A→D"
+                    label="Profile"
                     ms={turn.narrationToProfileMs}
                     tone="purple"
-                    title="Point A (press) to point D (profile ready)"
+                    title="Narration start to profile ready"
                   />
                 ) : null}
               </HStack>

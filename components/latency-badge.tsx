@@ -1,7 +1,6 @@
 "use client";
 
 import { Box } from "@chakra-ui/react";
-import { formatLatencyMs } from "@/lib/format-latency";
 
 export function LatencyBadge({
   label,
@@ -36,7 +35,7 @@ export function LatencyBadge({
       borderColor={colors.border}
       title={title}
     >
-      {label} {formatLatencyMs(ms)}
+      {label} {ms}ms
     </Box>
   );
 }

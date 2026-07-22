@@ -94,7 +94,9 @@ export function usePushToTalk({
   const finishCapture = useCallback(async () => {
     capturingRef.current = false;
     const ctx = audioCtxRef.current;
-    const sampleRate = ctx?.sampleRate ?? 48_000;
+    // Browsers often ignore AudioContext({ sampleRate: 16000 }) and capture at
+    // 44.1/48 kHz — downsample so ~4 min stays under the 8 MB API payload cap.
+    const captureRate = ctx?.sampleRate ?? 48_000;
     const total = sampleCountRef.current;
     const merged = new Float32Array(total);
     let pos = 0;
@@ -109,7 +111,9 @@ export function usePushToTalk({
     setLevel(0);
     startingRef.current = false;
 
-    const blob = encodeWav(merged, sampleRate);
+    const sampleRate = 16_000;
+    const pcm = downsampleToRate(merged, captureRate, sampleRate);
+    const blob = encodeWav(pcm, sampleRate);
     if (blob.size >= MIN_BLOB_BYTES) {
       try {
         await onRecordedRef.current(blob);
@@ -272,6 +276,23 @@ export function usePushToTalk({
   useEffect(() => () => releaseStream(), [releaseStream]);
 
   return { isRecording, permission, error, level, requestPermission };
+}
+
+/** Nearest-neighbor downsample — fine for speech STT, keeps uploads small. */
+function downsampleToRate(
+  samples: Float32Array,
+  fromRate: number,
+  toRate: number,
+): Float32Array {
+  if (fromRate === toRate || samples.length === 0) return samples;
+  if (fromRate < toRate) return samples;
+  const ratio = fromRate / toRate;
+  const outLen = Math.max(1, Math.floor(samples.length / ratio));
+  const out = new Float32Array(outLen);
+  for (let i = 0; i < outLen; i++) {
+    out[i] = samples[Math.min(samples.length - 1, Math.floor(i * ratio))];
+  }
+  return out;
 }
 
 function encodeWav(samples: Float32Array, sampleRate: number): Blob {

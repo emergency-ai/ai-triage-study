@@ -117,6 +117,7 @@ export function useStudyStream(conversationId: string | null): UseStudyStream {
           conversationId,
           audio: payload.audio,
           text: payload.text,
+          narrationStartedAt: payload.narrationStartedAt,
           captureToUploadMs: payload.captureToUploadMs,
         });
 

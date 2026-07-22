@@ -77,8 +77,11 @@ export async function getConversation(
 async function blobToBase64(blob: Blob): Promise<string> {
   const buffer = await blob.arrayBuffer();
   const bytes = new Uint8Array(buffer);
+  const chunkSize = 0x2000;
   let binary = "";
-  for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
+  }
   return btoa(binary);
 }
 
@@ -86,6 +89,9 @@ export async function postUtterance(args: {
   conversationId: string;
   audio?: UploadableAudio;
   text?: string;
+  /** Client timestamp (performance.now) at narration start — preferred for A→upload. */
+  narrationStartedAt?: number;
+  /** Legacy: precomputed A→upload ms. Used only when narrationStartedAt is omitted. */
   captureToUploadMs?: number;
 }): Promise<TriageResponse> {
   const payload: Record<string, string | number> = {};
@@ -95,7 +101,15 @@ export async function postUtterance(args: {
   } else if (args.text) {
     payload.text = args.text;
   }
-  if (args.captureToUploadMs != null) {
+
+  // Measure A→upload at the last moment before the network call so base64
+  // encode time is included (was previously snapped before encoding).
+  if (args.narrationStartedAt != null) {
+    payload.capture_to_upload_ms = Math.max(
+      0,
+      Math.round(performance.now() - args.narrationStartedAt),
+    );
+  } else if (args.captureToUploadMs != null) {
     payload.capture_to_upload_ms = args.captureToUploadMs;
   }
 

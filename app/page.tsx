@@ -28,9 +28,8 @@ export default function Page() {
     async (blob: Blob) => {
       const startedAt = narrationStartedAtRef.current;
       narrationStartedAtRef.current = null;
-      const captureToUploadMs =
-        startedAt != null ? Math.max(0, Math.round(performance.now() - startedAt)) : undefined;
-      await stream.sendAudio(blob, { captureToUploadMs, narrationStartedAt: startedAt ?? undefined });
+      // capture_to_upload_ms is finalized in postUtterance (after base64, before fetch).
+      await stream.sendAudio(blob, { narrationStartedAt: startedAt ?? undefined });
     },
     [stream],
   );

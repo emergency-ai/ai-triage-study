@@ -55,14 +55,14 @@ sam build
 sam deploy --resolve-image-repos
 ```
 
-Set `GROQ_API_KEY` on the **`ai-triage-study`** Lambda (same key as `ambient-agent`):
+Set `GROQ_API_KEY` on the **`ai-triage-study`** Lambda (same key as `ambient-agent`). Voice STT uses shared `app.stt.client.transcribe` (Groq Whisper):
 
 ```bash
 aws lambda update-function-configuration --function-name ai-triage-study --region ca-central-1 \
-  --environment "Variables={CORS_ALLOW_ORIGIN=*,AI_TRIAGE_STUDY_CONVERSATIONS_TABLE=ai-triage-study-conversations,AI_TRIAGE_STUDY_TURNS_TABLE=ai-triage-study-turns,GROQ_API_KEY=<your-groq-key>,GROQ_MODEL=meta-llama/llama-4-scout-17b-16e-instruct}"
+  --environment "Variables={CORS_ALLOW_ORIGIN=*,AI_TRIAGE_STUDY_CONVERSATIONS_TABLE=ai-triage-study-conversations,AI_TRIAGE_STUDY_TURNS_TABLE=ai-triage-study-turns,GROQ_API_KEY=<your-groq-key>,GROQ_MODEL=qwen/qwen3.6-27b,GROQ_WHISPER_MODEL=whisper-large-v3-turbo}"
 ```
 
-Without this key, `POST .../utterances` returns 500 because profile generation calls Groq.
+Without this key, `POST .../utterances` fails because both Whisper STT and profile generation call Groq.
 
 ## Database tables
 

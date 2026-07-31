@@ -77,7 +77,7 @@ export default function Page() {
               <SaraLogo size={24} />
               <Heading size="sm">AI Triage Study</Heading>
               <Text fontSize="xs" opacity={0.55}>
-                to validate patient profile generation using SARA AI
+                to validate patient profiles and transfer decisions using SARA AI
               </Text>
             </HStack>
             <Text fontSize="xs" opacity={0.55} fontFamily="mono">
@@ -151,7 +151,7 @@ export default function Page() {
               ) : null}
               {stream.busy ? (
                 <Text fontSize="xs" opacity={0.6}>
-                  Generating patient profile…
+                  Generating patient profile and transfer decision…
                 </Text>
               ) : null}
             </Stack>

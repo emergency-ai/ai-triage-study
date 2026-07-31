@@ -57,6 +57,8 @@ function Turn({ turn }: { turn: StudyChatTurn }) {
   const pendingLabel = isUser ? "Transcribing…" : "Generating profile…";
   const displayText = isUser ? turn.text : turn.text;
   const showJsonBadge = !isUser && turn.text && isValidJson(turn.text);
+  const agentLabel =
+    isPending || showJsonBadge ? "SARA Generated Patient Profile" : "SARA Transfer Decision";
   const showLatencyBadges =
     !isUser &&
     !isPending &&
@@ -68,7 +70,7 @@ function Turn({ turn }: { turn: StudyChatTurn }) {
       {!isUser && <SaraLogo size={28} />}
       <Box maxW="85%">
         <Text fontSize="xs" opacity={0.55} mb="1" textAlign={isUser ? "right" : "left"}>
-          {isUser ? "You" : "SARA Generated Patient Profile"}
+          {isUser ? "You" : agentLabel}
           {showJsonBadge ? " · JSON" : null}
         </Text>
         {(turn.text || isPending) && (
@@ -96,7 +98,14 @@ function Turn({ turn }: { turn: StudyChatTurn }) {
               displayText
             )}
             {showLatencyBadges ? (
-              <HStack gap="2" mt="3" pt="2" borderTopWidth="1px" borderColor="whiteAlpha.300" flexWrap="wrap">
+              <HStack
+                gap="2"
+                mt="3"
+                pt="2"
+                borderTopWidth="1px"
+                borderColor="whiteAlpha.300"
+                flexWrap="wrap"
+              >
                 {typeof turn.narrationToTranscriptMs === "number" &&
                 (turn.inputMode === "voice" || turn.inputMode == null) ? (
                   <LatencyBadge

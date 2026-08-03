@@ -9,7 +9,8 @@ let client: DynamoDBDocumentClient | null = null;
 
 function getClient(): DynamoDBDocumentClient {
   if (!client) {
-    const region = process.env.AWS_REGION ?? "ca-central-1";
+    const region =
+      process.env.AI_TRIAGE_STUDY_AWS_REGION ?? process.env.AWS_REGION ?? "ca-central-1";
     client = DynamoDBDocumentClient.from(new DynamoDBClient({ region }), {
       marshallOptions: { removeUndefinedValues: true },
     });

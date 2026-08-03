@@ -1,0 +1,22 @@
+version: 1
+frontend:
+  phases:
+    preBuild:
+      commands:
+        - nvm use 22
+        - corepack enable
+        - corepack prepare pnpm@10.32.1 --activate
+        - pnpm config set store-dir .pnpm-store
+        - pnpm install --frozen-lockfile --prefer-offline
+    build:
+      commands:
+        - env | grep -E '^(NEXT_PUBLIC_API_ORIGIN|NEXT_PUBLIC_API_KEY|AI_TRIAGE_STUDY_CONVERSATIONS_TABLE|AI_TRIAGE_STUDY_AWS_REGION)=' >> .env.production || true
+        - pnpm build
+  artifacts:
+    baseDirectory: .next
+    files:
+      - "**/*"
+  cache:
+    paths:
+      - .next/cache/**/*
+      - .pnpm-store/**/*

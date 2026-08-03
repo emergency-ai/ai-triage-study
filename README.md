@@ -47,7 +47,7 @@ cp .env.example .env   # edit NEXT_PUBLIC_API_ORIGIN and NEXT_PUBLIC_API_KEY
 pnpm dev
 ```
 
-## Deploy
+## Deploy backend
 
 ```bash
 cd aws
@@ -63,6 +63,36 @@ aws lambda update-function-configuration --function-name ai-triage-study --regio
 ```
 
 Without this key, `POST .../utterances` fails because both Whisper STT and profile generation call Groq.
+
+## Deploy frontend with AWS Amplify Hosting
+
+This repository includes `amplify.yml` for a Next.js SSR deployment. The app uses
+Next.js 15 because that is the latest major version supported by Amplify Hosting
+Compute.
+
+1. In **AWS Amplify → Create new app → GitHub**, connect this repository and the
+   production branch.
+2. Keep the detected framework as **Next.js - SSR**. Amplify reads the build
+   commands and `.next` artifact directory from `amplify.yml`.
+3. Add these variables under **Hosting → Environment variables**:
+
+   | Variable | Required | Description |
+   |----------|----------|-------------|
+   | `NEXT_PUBLIC_API_ORIGIN` | Yes | API Gateway origin, including its stage |
+   | `NEXT_PUBLIC_API_KEY` | If required | API Gateway key sent by the browser |
+   | `AI_TRIAGE_STUDY_AWS_REGION` | Yes | Region containing the DynamoDB table, for example `ca-central-1` |
+   | `AI_TRIAGE_STUDY_CONVERSATIONS_TABLE` | Yes | Conversations table name |
+
+4. Create a branch-level **SSR Compute role** for the Amplify branch. Grant only
+   `dynamodb:Scan` on the conversations table, then attach the role in the
+   branch's IAM role settings. Do not configure `AWS_ACCESS_KEY_ID` or
+   `AWS_SECRET_ACCESS_KEY`.
+5. Deploy the branch. Optionally add the production domain under **Custom
+   domains** after the first successful deployment.
+
+`amplify.yml` copies only the listed variables into `.env.production`, which is
+required for the Next.js server runtime. Values prefixed with `NEXT_PUBLIC_` are
+included in browser assets and must not contain private credentials.
 
 ## Database tables
 
